@@ -108,8 +108,22 @@ function App() {
         if (!newAccount.account_name) return alert("请输入账号名称！");
 
         try {
-            console.log('Attempting to insert account:', newAccount);
-            const { data, error } = await supabase.from('accounts').insert([newAccount]);
+            // 准备插入数据，移除空的tags字段
+            const accountData = {
+                phone_id: newAccount.phone_id || null,
+                sim_slot: newAccount.sim_slot,
+                account_name: newAccount.account_name,
+                note: newAccount.note || null,
+                status: 'warming' // 默认状态
+            };
+
+            // 只有当tags不为空时才添加
+            if (newAccount.tags && newAccount.tags.trim()) {
+                accountData.tags = newAccount.tags;
+            }
+
+            console.log('Attempting to insert account:', accountData);
+            const { data, error } = await supabase.from('accounts').insert([accountData]);
 
             if (error) {
                 console.error('Supabase insert error:', error);
@@ -126,6 +140,7 @@ function App() {
             alert(`添加失败: ${err.message}`);
         }
     };
+
 
 
     const updateAccountStatus = async (id, status, viewCount) => {
