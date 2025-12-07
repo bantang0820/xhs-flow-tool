@@ -143,10 +143,11 @@ function App() {
 
 
 
-    const updateAccountStatus = async (id, status, viewCount) => {
+    const updateAccountStatus = async (id, status, viewCount, tags) => {
         const updates = {};
         if (status) updates.status = status;
-        if (viewCount !== null) updates.warming_view_count = viewCount;
+        if (viewCount !== null && viewCount !== undefined) updates.warming_view_count = viewCount;
+        if (tags !== undefined) updates.tags = tags;
         await supabase.from('accounts').update(updates).eq('id', id);
         fetchAccounts();
     };
@@ -320,12 +321,74 @@ function App() {
                     </div>
                     <div className="col-span-2 space-y-4">
                         {accounts.map(acc => (
-                            <div key={acc.id} className={`p-4 rounded border-l-4 shadow bg-white flex justify-between items-center ${acc.status === 'active' ? 'border-green-500' : acc.status === 'abandoned' ? 'border-gray-500 bg-gray-50' : 'border-yellow-500'}`}>
-                                <div><div className="font-bold text-lg">{acc.account_name}</div><div className="text-sm text-gray-500">{acc.phone_id} - {acc.sim_slot} | {acc.status}</div></div>
-                                {acc.status === 'warming' && (
-                                    <div className="flex items-center space-x-2"><input type="number" placeholder="浏览量" className="border p-1 w-20 rounded" onBlur={(e) => updateAccountStatus(acc.id, null, e.target.value)} /><button onClick={() => updateAccountStatus(acc.id, 'active', acc.warming_view_count)} className="bg-green-500 text-white px-3 py-1 rounded text-sm">达标</button><button onClick={() => updateAccountStatus(acc.id, 'abandoned', acc.warming_view_count)} className="bg-gray-400 text-white px-3 py-1 rounded text-sm">淘汰</button></div>
-                                )}
-                                {acc.status === 'active' && <span className="text-green-600 font-bold">✅ 合格</span>}
+                            <div key={acc.id} className={`p-4 rounded border-l-4 shadow bg-white ${acc.status === 'active' ? 'border-green-500' : acc.status === 'abandoned' ? 'border-gray-500 bg-gray-50' : 'border-yellow-500'}`}>
+                                <div className="flex justify-between items-start">
+                                    <div className="flex-1">
+                                        <div className="font-bold text-lg">{acc.account_name}</div>
+                                        <div className="text-sm text-gray-500">{acc.phone_id} - {acc.sim_slot} | {acc.status}</div>
+
+                                        {/* Tags 显示和编辑 */}
+                                        <div className="mt-2 flex flex-wrap items-center gap-2">
+                                            <span className="text-xs text-gray-400">🏷️</span>
+                                            {acc.tags && acc.tags.split(',').filter(t => t.trim()).map((tag, idx) => (
+                                                <span key={idx} className="bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded-full flex items-center">
+                                                    {tag}
+                                                    <button
+                                                        onClick={() => {
+                                                            const newTags = acc.tags.split(',').filter(t => t.trim() !== tag).join(',');
+                                                            updateAccountStatus(acc.id, null, null, newTags);
+                                                        }}
+                                                        className="ml-1 text-blue-400 hover:text-blue-600 font-bold"
+                                                    >
+                                                        ×
+                                                    </button>
+                                                </span>
+                                            ))}
+                                            <input
+                                                className="text-xs border-b border-gray-200 focus:border-blue-500 outline-none bg-transparent text-gray-600 w-24"
+                                                placeholder="+ 标签"
+                                                onKeyDown={(e) => {
+                                                    if (e.key === 'Enter') {
+                                                        const val = e.target.value.trim();
+                                                        if (val) {
+                                                            const currentTags = acc.tags ? acc.tags.split(',').filter(t => t.trim()) : [];
+                                                            if (!currentTags.includes(val)) {
+                                                                const newTags = [...currentTags, val].join(',');
+                                                                updateAccountStatus(acc.id, null, null, newTags);
+                                                                e.target.value = '';
+                                                            }
+                                                        }
+                                                    }
+                                                }}
+                                            />
+                                        </div>
+                                    </div>
+
+                                    {/* 右侧按钮区域 */}
+                                    <div className="ml-4">
+                                        {acc.status === 'warming' && (
+                                            <div className="flex flex-col space-y-2">
+                                                <div className="flex items-center space-x-2">
+                                                    <input type="number" placeholder="浏览量" className="border p-1 w-20 rounded" onBlur={(e) => updateAccountStatus(acc.id, null, e.target.value)} />
+                                                    <button onClick={() => updateAccountStatus(acc.id, 'active', acc.warming_view_count)} className="bg-green-500 text-white px-3 py-1 rounded text-sm">达标</button>
+                                                    <button onClick={() => updateAccountStatus(acc.id, 'abandoned', acc.warming_view_count)} className="bg-gray-400 text-white px-3 py-1 rounded text-sm">淘汰</button>
+                                                </div>
+                                                <button
+                                                    onClick={() => {
+                                                        if (window.confirm('确认启动养号任务吗？')) {
+                                                            handleAddTask(null, { account_id: acc.id, product_name: `${acc.account_name}养号`, type: 'warming' });
+                                                            setActiveTab('mission');
+                                                        }
+                                                    }}
+                                                    className="bg-red-500 text-white px-3 py-1 rounded text-sm flex items-center justify-center w-full"
+                                                >
+                                                    🔥 启动养号
+                                                </button>
+                                            </div>
+                                        )}
+                                        {acc.status === 'active' && <span className="text-green-600 font-bold">✅ 合格</span>}
+                                    </div>
+                                </div>
                             </div>
                         ))}
                     </div>
