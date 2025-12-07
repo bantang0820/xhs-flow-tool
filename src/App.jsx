@@ -165,7 +165,8 @@ function App() {
             account_id: taskData.account_id,
             product_name: taskData.product_name,
             mission_code: mission_code,
-            creator_email: session.user.email
+            creator_email: session.user.email,
+            type: taskData.type || 'product' // 添加type字段
         }]);
 
         if (error) {
@@ -189,15 +190,20 @@ function App() {
         // 3. 检查是否所有步骤都完成
         const t = { ...task, [field]: newVal };
 
-        // SOP 6步
-        const sopDone = t.check_keywords && t.check_copywriting && t.check_tags && t.check_cover && t.check_photos && t.check_archive;
+        if (task.type === 'warming') {
+            // 养号任务：检查2个字段
+            const warmingDone = t.check_warming_titles && t.check_warming_transfer;
+            if (warmingDone && task.status === 'planning') {
+                updates.status = 'ready';
+            }
+        } else {
+            // 测品任务：检查SOP 6步 + 资料准备 5步
+            const sopDone = t.check_keywords && t.check_copywriting && t.check_tags && t.check_cover && t.check_photos && t.check_archive;
+            const prepDone = t.prep_detail_imgs && t.prep_100_titles && t.prep_note_screenshots && t.prep_comment_screenshots && t.prep_final_excel;
 
-        // 资料准备 5步
-        const prepDone = t.prep_detail_imgs && t.prep_100_titles && t.prep_note_screenshots && t.prep_comment_screenshots && t.prep_final_excel;
-
-        // 只有 SOP 和 资料 都齐了，才流转
-        if (sopDone && prepDone && task.status === 'planning') {
-            updates.status = 'ready';
+            if (sopDone && prepDone && task.status === 'planning') {
+                updates.status = 'ready';
+            }
         }
 
         // 4. 发送给服务器
@@ -207,8 +213,8 @@ function App() {
             alert("更新失败，请重试");
             setTasks(prev => prev.map(t => t.id === task.id ? { ...t, [field]: !newVal } : t));
         } else {
-            if (sopDone && prepDone) {
-                setTimeout(() => fetchTasks(), 500);
+            if (updates.status === 'ready') {
+                fetchTasks(); // 刷新以获取最新状态
             }
         }
     };
@@ -261,6 +267,30 @@ function App() {
         } catch (err) { alert(err.message); }
     };
 
+    const handleWarmingDecision = async (task, decision) => {
+        try {
+            if (decision === 'abandon') {
+                // 淘汰账号
+                if (window.confirm(`确认淘汰账号 "${task.accounts?.account_name}" 吗？`)) {
+                    await supabase.from('accounts').update({ status: 'abandoned' }).eq('id', task.account_id);
+                    await supabase.from('tasks').update({ review_result: 'abandon' }).eq('id', task.id);
+                    fetchAccounts();
+                    fetchTasks();
+                    alert('账号已淘汰');
+                }
+            } else if (decision === 'activate') {
+                // 启用账号
+                if (window.confirm(`确认启用账号 "${task.accounts?.account_name}" 吗？`)) {
+                    await supabase.from('accounts').update({ status: 'active' }).eq('id', task.account_id);
+                    await supabase.from('tasks').update({ review_result: 'activate' }).eq('id', task.id);
+                    fetchAccounts();
+                    fetchTasks();
+                    alert('账号已启用！');
+                }
+            }
+        } catch (err) { alert(err.message); }
+    };
+
     const updateLongTermCheck = async (item, field, isDate = false) => {
         const newVal = isDate ? new Date().toISOString() : !item[field];
         await supabase.from('long_term_products').update({ [field]: newVal }).eq('id', item.id);
@@ -287,7 +317,7 @@ function App() {
     const activeAccounts = accounts.filter(a => a.status === 'active');
     const planningTasks = tasks.filter(t => t.status === 'planning');
     const readyTasks = tasks.filter(t => t.status === 'ready');
-    const publishedTasks = tasks.filter(t => t.status === 'published');
+    const publishedTasks = tasks.filter(t => t.status === 'published' && !t.review_result);
 
     return (
         <div className="min-h-screen bg-gray-100 p-8 font-sans text-gray-800">
@@ -412,39 +442,57 @@ function App() {
                                 {planningTasks.map(task => (
                                     <div key={task.id} className="bg-white p-4 rounded shadow border-l-4 border-yellow-400">
                                         <div className="font-bold">{task.product_name}</div>
+                                        <div className="text-xs text-gray-500 mt-1">
+                                            {task.accounts?.phone_id} - {task.accounts?.sim_slot} - {task.accounts?.account_name}
+                                        </div>
                                         <div className="text-xs bg-gray-100 p-1 mt-1 select-all">{task.mission_code}</div>
-                                        <div className="mt-3 border-t pt-2 grid grid-cols-2 gap-4">
-                                            {/* 左列：SOP流程 */}
-                                            <div className="space-y-1">
-                                                <div className="text-xs text-gray-400 font-bold mb-1">⚙️ SOP 流程:</div>
-                                                {['check_keywords:1.制作标题', 'check_copywriting:2.批量跑正文', 'check_tags:3.确定标签', 'check_cover:4.制作首图', 'check_photos:5.拍摄图片', 'check_archive:6.移交Jack'].map(item => {
-                                                    const [key, label] = item.split(':');
-                                                    return (
-                                                        <label key={key} className={`flex items-center space-x-2 text-xs cursor-pointer ${task[key] ? 'text-green-600 line-through opacity-60' : 'text-gray-600'}`}>
-                                                            <input type="checkbox" checked={!!task[key]} onChange={() => toggleChecklist(task, key)} /><span>{label}</span>
-                                                        </label>
-                                                    )
-                                                })}
-                                            </div>
-
-                                            {/* 右列：资料准备 */}
-                                            <div className="space-y-1 border-l pl-4 border-dashed border-gray-200">
-                                                <div className="text-xs text-gray-400 font-bold mb-1">📂 资料清单:</div>
-                                                {[
-                                                    'prep_detail_imgs:商品详情截图',
-                                                    'prep_100_titles:100个爆款标题',
-                                                    'prep_note_screenshots:正文截图(5-10)',
-                                                    'prep_comment_screenshots:商品评论截图',
-                                                    'prep_final_excel:最终标题和正文'
-                                                ].map(item => {
-                                                    const [key, label] = item.split(':');
-                                                    return (
-                                                        <label key={key} className={`flex items-center space-x-2 text-xs cursor-pointer ${task[key] ? 'text-blue-600 line-through opacity-60' : 'text-gray-600'}`}>
-                                                            <input type="checkbox" checked={!!task[key]} onChange={() => toggleChecklist(task, key)} /><span>{label}</span>
-                                                        </label>
-                                                    )
-                                                })}
-                                            </div>
+                                        <div className="mt-3 border-t pt-2">
+                                            {task.type === 'warming' ? (
+                                                /* 养号任务清单 */
+                                                <div className="space-y-2">
+                                                    <div className="text-xs text-red-500 font-bold mb-1">🔥 养号任务清单:</div>
+                                                    <label className={`flex items-center space-x-2 text-sm cursor-pointer ${task.check_warming_titles ? 'text-green-600 line-through opacity-60' : 'text-gray-800'}`}>
+                                                        <input type="checkbox" checked={!!task.check_warming_titles} onChange={() => toggleChecklist(task, 'check_warming_titles')} />
+                                                        <span>1. 找50个爆款标题 (Excel)</span>
+                                                    </label>
+                                                    <label className={`flex items-center space-x-2 text-sm cursor-pointer ${task.check_warming_transfer ? 'text-green-600 line-through opacity-60' : 'text-gray-800'}`}>
+                                                        <input type="checkbox" checked={!!task.check_warming_transfer} onChange={() => toggleChecklist(task, 'check_warming_transfer')} />
+                                                        <span>2. 移交给Jack</span>
+                                                    </label>
+                                                </div>
+                                            ) : (
+                                                /* 测品任务清单 */
+                                                <div className="grid grid-cols-2 gap-4">
+                                                    <div className="space-y-1">
+                                                        <div className="text-xs text-gray-400 font-bold mb-1">⚙️ SOP 流程:</div>
+                                                        {['check_keywords:1.制作标题', 'check_copywriting:2.批量跑正文', 'check_tags:3.确定标签', 'check_cover:4.制作首图', 'check_photos:5.拍摄图片', 'check_archive:6.移交Jack'].map(item => {
+                                                            const [key, label] = item.split(':');
+                                                            return (
+                                                                <label key={key} className={`flex items-center space-x-2 text-xs cursor-pointer ${task[key] ? 'text-green-600 line-through opacity-60' : 'text-gray-600'}`}>
+                                                                    <input type="checkbox" checked={!!task[key]} onChange={() => toggleChecklist(task, key)} /><span>{label}</span>
+                                                                </label>
+                                                            )
+                                                        })}
+                                                    </div>
+                                                    <div className="space-y-1 border-l pl-4 border-dashed border-gray-200">
+                                                        <div className="text-xs text-gray-400 font-bold mb-1">📂 资料清单:</div>
+                                                        {[
+                                                            'prep_detail_imgs:商品详情截图',
+                                                            'prep_100_titles:100个爆款标题',
+                                                            'prep_note_screenshots:正文截图(5-10)',
+                                                            'prep_comment_screenshots:商品评论截图',
+                                                            'prep_final_excel:最终标题和正文'
+                                                        ].map(item => {
+                                                            const [key, label] = item.split(':');
+                                                            return (
+                                                                <label key={key} className={`flex items-center space-x-2 text-xs cursor-pointer ${task[key] ? 'text-blue-600 line-through opacity-60' : 'text-gray-600'}`}>
+                                                                    <input type="checkbox" checked={!!task[key]} onChange={() => toggleChecklist(task, key)} /><span>{label}</span>
+                                                                </label>
+                                                            )
+                                                        })}
+                                                    </div>
+                                                </div>
+                                            )}
                                         </div>
                                     </div>
                                 ))}
@@ -476,18 +524,48 @@ function App() {
                                             <span>{task.product_name}</span>
                                             <span className="text-xs bg-gray-200 px-1 rounded">{task.mission_code.slice(-4)}</span>
                                         </div>
-                                        {task.review_result ? (
-                                            <div className="mt-2 text-xs font-bold text-center uppercase p-1 rounded bg-gray-100 text-gray-500">
-                                                {task.review_result === 'drop' && '❌ 已淘汰'}
-                                                {task.review_result === 'retry' && '🔄 已安排复测'}
-                                                {task.review_result === 'promoted' && '🌲 晋升长期'}
-                                            </div>
+
+                                        {task.type === 'warming' ? (
+                                            /* 养号任务的复盘 */
+                                            <>
+                                                <div className="mt-2 flex items-center bg-gray-50 p-1 rounded">
+                                                    <span className="text-xs text-gray-400 mr-2 whitespace-nowrap">👁️ 最高小眼睛:</span>
+                                                    <input
+                                                        type="number"
+                                                        className="w-20 text-xs bg-transparent border-b border-gray-300 focus:border-blue-500 outline-none"
+                                                        defaultValue={task.max_views || ''}
+                                                        onBlur={(e) => {
+                                                            const val = parseInt(e.target.value) || 0;
+                                                            supabase.from('tasks').update({ max_views: val }).eq('id', task.id);
+                                                        }}
+                                                    />
+                                                </div>
+                                                <div className="grid grid-cols-2 gap-1 mt-2">
+                                                    <button onClick={() => handleWarmingDecision(task, 'abandon')} className="bg-gray-200 hover:bg-gray-300 text-gray-600 text-xs py-1 rounded">淘汰账号</button>
+                                                    <button onClick={() => handleWarmingDecision(task, 'activate')} className="bg-green-100 hover:bg-green-200 text-green-700 text-xs py-1 rounded font-bold">启用账号</button>
+                                                </div>
+                                            </>
                                         ) : (
-                                            <div className="grid grid-cols-3 gap-1 mt-2">
-                                                <button onClick={() => handleDecision(task, 'drop')} className="bg-gray-200 hover:bg-gray-300 text-gray-600 text-xs py-1 rounded">淘汰</button>
-                                                <button onClick={() => handleDecision(task, 'retry')} className="bg-blue-100 hover:bg-blue-200 text-blue-600 text-xs py-1 rounded">继续测</button>
-                                                <button onClick={() => handleDecision(task, 'promoted')} className="bg-green-100 hover:bg-green-200 text-green-700 text-xs py-1 rounded font-bold">转长期</button>
-                                            </div>
+                                            /* 测品任务的复盘 */
+                                            <>
+                                                <div className="mt-2 flex items-center bg-gray-50 p-1 rounded">
+                                                    <span className="text-xs text-gray-400 mr-2 whitespace-nowrap">💰 出单:</span>
+                                                    <input
+                                                        type="number"
+                                                        className="w-16 text-xs bg-transparent border-b border-gray-300 focus:border-green-500 outline-none"
+                                                        defaultValue={task.orders_count || ''}
+                                                        onBlur={(e) => {
+                                                            const val = parseInt(e.target.value) || 0;
+                                                            supabase.from('tasks').update({ orders_count: val }).eq('id', task.id);
+                                                        }}
+                                                    />
+                                                </div>
+                                                <div className="grid grid-cols-3 gap-1 mt-2">
+                                                    <button onClick={() => handleDecision(task, 'drop')} className="bg-gray-200 hover:bg-gray-300 text-gray-600 text-xs py-1 rounded">淘汰</button>
+                                                    <button onClick={() => handleDecision(task, 'retry')} className="bg-blue-100 hover:bg-blue-200 text-blue-600 text-xs py-1 rounded">继续测</button>
+                                                    <button onClick={() => handleDecision(task, 'promoted')} className="bg-green-100 hover:bg-green-200 text-green-700 text-xs py-1 rounded font-bold">转长期</button>
+                                                </div>
+                                            </>
                                         )}
                                     </div>
                                 ))}
