@@ -441,7 +441,12 @@ function App() {
                             <div className="space-y-3">
                                 {planningTasks.map(task => (
                                     <div key={task.id} className="bg-white p-4 rounded shadow border-l-4 border-yellow-400">
-                                        <div className="font-bold">{task.product_name}</div>
+                                        <div className="flex justify-between items-start mb-2">
+                                            <div className="font-bold">{task.product_name}</div>
+                                            <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-full">
+                                                👤 {task.creator_email?.split('@')[0] || '未知'}
+                                            </span>
+                                        </div>
                                         <div className="text-xs text-gray-500 mt-1">
                                             {task.accounts?.phone_id} - {task.accounts?.sim_slot} - {task.accounts?.account_name}
                                         </div>
@@ -505,7 +510,12 @@ function App() {
                             <div className="space-y-3">
                                 {readyTasks.map(task => (
                                     <div key={task.id} className="bg-white p-4 rounded shadow border-l-4 border-green-500">
-                                        <div className="font-bold text-lg">{task.product_name}</div>
+                                        <div className="flex justify-between items-start mb-2">
+                                            <div className="font-bold text-lg">{task.product_name}</div>
+                                            <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-full">
+                                                👤 {task.creator_email?.split('@')[0] || '未知'}
+                                            </span>
+                                        </div>
                                         <div className="text-sm text-blue-600 mt-1">{task.accounts?.phone_id} / {task.accounts?.sim_slot}</div>
                                         <div className="bg-gray-800 text-white p-2 rounded mt-2 text-xs font-mono cursor-pointer" onClick={() => navigator.clipboard.writeText(task.mission_code)}>📂 {task.mission_code} (复制)</div>
                                         <button onClick={() => markPublished(task.id)} className="w-full mt-2 bg-green-600 text-white py-2 rounded font-bold">🚀 确认发布</button>
@@ -520,9 +530,14 @@ function App() {
                             <div className="space-y-2">
                                 {publishedTasks.slice(0, 20).map(task => (
                                     <div key={task.id} className={`bg-white p-3 rounded border ${task.review_result === 'promoted' ? 'border-green-500 bg-green-50' : task.review_result === 'drop' ? 'border-red-200 opacity-60' : 'border-gray-200'}`}>
-                                        <div className="font-medium flex justify-between">
-                                            <span>{task.product_name}</span>
-                                            <span className="text-xs bg-gray-200 px-1 rounded">{task.mission_code.slice(-4)}</span>
+                                        <div className="flex justify-between items-start mb-1">
+                                            <div className="font-medium">{task.product_name}</div>
+                                            <div className="flex items-center gap-1">
+                                                <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">
+                                                    👤 {task.creator_email?.split('@')[0] || '未知'}
+                                                </span>
+                                                <span className="text-xs bg-gray-200 px-1 rounded">{task.mission_code.slice(-4)}</span>
+                                            </div>
                                         </div>
 
                                         {task.type === 'warming' ? (
