@@ -104,13 +104,29 @@ function App() {
     const handleLogout = async () => await supabase.auth.signOut();
 
     const handleAddAccount = async () => {
+        console.log('handleAddAccount called', newAccount);
         if (!newAccount.account_name) return alert("请输入账号名称！");
-        const { error } = await supabase.from('accounts').insert([newAccount]);
-        if (!error) {
+
+        try {
+            console.log('Attempting to insert account:', newAccount);
+            const { data, error } = await supabase.from('accounts').insert([newAccount]);
+
+            if (error) {
+                console.error('Supabase insert error:', error);
+                alert(`添加失败: ${error.message}`);
+                return;
+            }
+
+            console.log('Account inserted successfully:', data);
             setNewAccount({ phone_id: '', sim_slot: '卡槽 1', account_name: '', note: '', tags: '' });
             fetchAccounts();
+            alert('账号添加成功！');
+        } catch (err) {
+            console.error('Unexpected error:', err);
+            alert(`添加失败: ${err.message}`);
         }
     };
+
 
     const updateAccountStatus = async (id, status, viewCount) => {
         const updates = {};
